@@ -145,7 +145,7 @@ pub fn init_ui_rs(
     Ok(driver)
 }
 
-pub fn hello_lcd() -> Result<(), EspError> {
+pub fn set_lcd(text: &str) -> Result<(), EspError> {
     let mut display = Box::new(Framebuffer::<
         ColorFormat,
         _,
@@ -160,8 +160,6 @@ pub fn hello_lcd() -> Result<(), EspError> {
         display.bounding_box().top_left + Point { x: 0, y: 32 },
         Size::new(DISPLAY_WIDTH as u32, DISPLAY_HEIGHT as u32 - 32),
     );
-
-    let text = "Hello, ESP32!\n 请按下k0开始录音";
 
     let textbox_style = embedded_text::style::TextBoxStyleBuilder::new()
         .height_mode(embedded_text::style::HeightMode::FitToText)
@@ -189,4 +187,9 @@ pub fn hello_lcd() -> Result<(), EspError> {
     );
 
     Ok(())
+}
+
+pub fn hello_lcd() -> Result<(), EspError> {
+    let text = "Hello, ESP32!\n 请按下k0开始录音";
+    set_lcd(text)
 }

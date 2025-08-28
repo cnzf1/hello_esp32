@@ -48,7 +48,7 @@ pub fn wifi(
 
     let ip_info = wifi.wifi().sta_netif().get_ip_info()?;
 
-    log::info!("Wifi DHCP info: {:?}", ip_info);
+    log::info!("Wifi DHCP info: {ip_info:?}");
 
     Ok(Box::new(esp_wifi))
 }

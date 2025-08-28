@@ -6,6 +6,8 @@ use esp_idf_svc::{
     io::Read,
 };
 
+use crate::ui::set_lcd;
+
 mod network;
 mod ui;
 
@@ -136,39 +138,89 @@ fn main() {
         .build()
         .unwrap();
 
-    tokio_rt.block_on(async {
-        log::info!("Starting HTTP GET request...");
-        match network::http_get("http://httpbin.org/get").await {
-            Ok(response) => log::info!("HTTP GET response: {}", response),
-            Err(e) => log::error!("HTTP GET error: {}", e),
-        }
-    });
+    // tokio_rt.block_on(async {
+    //     log::info!("Starting HTTP GET request...");
+    //     match network::http_get("http://httpbin.org/get").await {
+    //         Ok(response) => log::info!("HTTP GET response: {}", response),
+    //         Err(e) => log::error!("HTTP GET error: {}", e),
+    //     }
+    // });
 
-    if let Some(server_url) = SERVER_URL {
-        tokio_rt.block_on(async {
-            log::info!("Starting WebSocket task...");
-            match network::ws_task(server_url).await {
-                Ok(_) => log::info!("WebSocket task completed successfully"),
-                Err(e) => log::error!("WebSocket task error: {}", e),
-            }
-        });
-    } else {
-        log::warn!("No SERVER_URL provided, skipping WebSocket connection");
-    }
+    // if let Some(server_url) = SERVER_URL {
+    //     tokio_rt.block_on(async {
+    //         log::info!("Starting WebSocket task...");
+    //         match network::ws_task(server_url).await {
+    //             Ok(_) => log::info!("WebSocket task completed successfully"),
+    //             Err(e) => log::error!("WebSocket task error: {}", e),
+    //         }
+    //     });
+    // } else {
+    //     log::warn!("No SERVER_URL provided, skipping WebSocket connection");
+    // }
 
-    let samples = record(peripherals.i2s0, ws.into(), sck.into(), din.into(), None);
-    log::info!("Recording complete, length: {} bytes", samples.len());
-
-    player_wav(
-        peripherals.i2s1,
-        bclk.into(),
-        dout.into(),
-        lrclk.into(),
-        None,
-        Some(&samples),
+    let i2s_config = config::StdConfig::new(
+        config::Config::default().auto_clear(true),
+        config::StdClkConfig::from_sample_rate_hz(SAMPLE_RATE),
+        config::StdSlotConfig::philips_slot_default(
+            config::DataBitWidth::Bits16,
+            config::SlotMode::Mono,
+        ),
+        config::StdGpioConfig::default(),
     );
 
-    unsafe { esp_idf_svc::sys::esp_restart() }
+    let mut rx_driver = I2sDriver::new_std_rx(
+        peripherals.i2s0,
+        &i2s_config,
+        sck,
+        din,
+        Option::<AnyIOPin>::None,
+        ws,
+    )
+    .unwrap();
+    rx_driver.rx_enable().unwrap();
+
+    let mut tx_driver = I2sDriver::new_std_tx(
+        peripherals.i2s1,
+        &i2s_config,
+        bclk,
+        dout,
+        Option::<AnyIOPin>::None,
+        lrclk,
+    )
+    .unwrap();
+    tx_driver.tx_enable().unwrap();
+
+    loop {
+        log::info!("Waiting for button press...");
+        set_lcd("Waiting for button press...").unwrap();
+        esp_idf_svc::hal::task::block_on(button.wait_for_rising_edge()).unwrap();
+
+        log::info!("Button pressed, starting listening...");
+        set_lcd("Button pressed, starting listening...").unwrap();
+
+        // let samples = record(&i2s0, ws.into(), sck.into(), din.into(), None);
+        let mut samples = vec![0u8; 5 * SAMPLE_RATE as usize * 2]; // 5 seconds of audio at 16kHz, 16-bit mono
+        rx_driver.read_exact(&mut samples).unwrap();
+        log::info!("Recording complete, length: {} bytes", samples.len());
+
+        // player_wav(
+        //     i2s1,
+        //     bclk.into(),
+        //     dout.into(),
+        //     lrclk.into(),
+        //     None,
+        //     Some(&samples),
+        // );
+
+        log::info!("Playing back answer...");
+        set_lcd("Playing back answer...").unwrap();
+        tx_driver.write_all(&samples, 1000).unwrap();
+    }
+
+    #[allow(unreachable_code)]
+    unsafe {
+        esp_idf_svc::sys::esp_restart()
+    }
 }
 
 pub fn get_stack_high() -> u32 {
