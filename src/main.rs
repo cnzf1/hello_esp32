@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use esp_idf_svc::{
     hal::{
         gpio::AnyIOPin,
@@ -105,9 +107,9 @@ fn main() {
 
     let mut button = esp_idf_svc::hal::gpio::PinDriver::input(peripherals.pins.gpio0).unwrap();
     button.set_pull(esp_idf_svc::hal::gpio::Pull::Up).unwrap();
-    button
-        .set_interrupt_type(esp_idf_svc::hal::gpio::InterruptType::PosEdge)
-        .unwrap();
+    // button
+    //     .set_interrupt_type(esp_idf_svc::hal::gpio::InterruptType::PosEdge)
+    //     .unwrap();
 
     log::info!("capacity of SPIRAM: {} KB", get_cap_spiram() / 1024); // it will show 8M if open CONFIG_SPIRAM in sdkconfig.default, else 0
     log::info!("capacity of internal RAM: {} KB", get_cap_internal() / 1024); // 363KB
@@ -131,8 +133,6 @@ fn main() {
     )
     .unwrap();
 
-    esp_idf_svc::hal::task::block_on(button.wait_for_rising_edge()).unwrap();
-    log::info!("Button pressed, starting recording...");
     let tokio_rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -190,31 +190,45 @@ fn main() {
     .unwrap();
     tx_driver.tx_enable().unwrap();
 
+    const BUFFER_SIZE: usize = 1024;
+    const MAX_SAMPLES: usize = 160_000 * 5;
+    let audio_buffer = Arc::new(Mutex::new(Vec::<u8>::with_capacity(MAX_SAMPLES)));
+
     loop {
-        log::info!("Waiting for button press...");
-        set_lcd("Waiting for button press...").unwrap();
-        esp_idf_svc::hal::task::block_on(button.wait_for_rising_edge()).unwrap();
+        log::info!("Waiting for long press...");
+        set_lcd("Waiting for long press...").unwrap();
+        tokio_rt.block_on(button.wait_for_low()).unwrap();
 
-        log::info!("Button pressed, starting listening...");
-        set_lcd("Button pressed, starting listening...").unwrap();
+        {
+            let mut buf = audio_buffer.lock().unwrap();
+            buf.clear();
+        }
 
-        // let samples = record(&i2s0, ws.into(), sck.into(), din.into(), None);
-        let mut samples = vec![0u8; 5 * SAMPLE_RATE as usize * 2]; // 5 seconds of audio at 16kHz, 16-bit mono
-        rx_driver.read_exact(&mut samples).unwrap();
-        log::info!("Recording complete, length: {} bytes", samples.len());
+        loop {
+            if button.is_high() {
+                break;
+            }
 
-        // player_wav(
-        //     i2s1,
-        //     bclk.into(),
-        //     dout.into(),
-        //     lrclk.into(),
-        //     None,
-        //     Some(&samples),
-        // );
+            // let samples = record(&i2s0, ws.into(), sck.into(), din.into(), None);
+            let mut tmp = [0u8; BUFFER_SIZE];
+            rx_driver.read_exact(&mut tmp).unwrap();
+            let read_samples = tmp.len();
+            if read_samples > 0 {
+                let mut buf = audio_buffer.lock().unwrap();
+                if buf.len() + read_samples <= MAX_SAMPLES {
+                    buf.extend_from_slice(&tmp[..read_samples]);
+                }
+                log::info!("Recording complete, length: {} bytes", buf.len());
+            }
+        }
 
         log::info!("Playing back answer...");
         set_lcd("Playing back answer...").unwrap();
-        tx_driver.write_all(&samples, 1000).unwrap();
+
+        {
+            let buf = audio_buffer.lock().unwrap();
+            tx_driver.write_all(&buf, 1000).unwrap();
+        }
     }
 
     #[allow(unreachable_code)]
@@ -224,9 +238,7 @@ fn main() {
 }
 
 pub fn get_stack_high() -> u32 {
-    let stack_high =
-        unsafe { esp_idf_svc::sys::uxTaskGetStackHighWaterMark2(std::ptr::null_mut()) };
-    stack_high
+    unsafe { esp_idf_svc::sys::uxTaskGetStackHighWaterMark2(std::ptr::null_mut()) }
 }
 
 pub fn get_cap_spiram() -> usize {
