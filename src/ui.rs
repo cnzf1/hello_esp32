@@ -145,7 +145,7 @@ pub fn init_ui_rs(
     Ok(driver)
 }
 
-pub fn set_lcd(text: &str) -> Result<(), EspError> {
+pub fn display(text: &str) -> Result<(), EspError> {
     let mut display = Box::new(Framebuffer::<
         ColorFormat,
         _,
@@ -189,7 +189,7 @@ pub fn set_lcd(text: &str) -> Result<(), EspError> {
     Ok(())
 }
 
-pub fn hello_lcd() -> Result<(), EspError> {
-    let text = "Hello, ESP32!\n 请按下k0开始录音";
-    set_lcd(text)
+pub fn greeting() -> Result<(), EspError> {
+    let text = "Hello, ESP32!";
+    display(text)
 }
