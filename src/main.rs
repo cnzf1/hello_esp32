@@ -1,4 +1,5 @@
 mod audio;
+mod multinet;
 mod ui;
 use crate::ui::display;
 use audio::{AFE, SAMPLE_RATE};

@@ -81,3 +81,7 @@ embuild = "0.33"
 remote_component = { name = "espressif/esp-sr", version = "^2.0.0" }
 bindings_header = "components/esp_sr/bindgen.h"
 bindings_module = "esp_sr"
+
+[package.metadata.esp-idf-sys]
+esp_idf_tools_install_dir = "custom:/home/liuzf/.espressif"
+# esp_idf_tools_install_dir = "custom:/home/liuzf/esp/echokit_box/.embuild"
