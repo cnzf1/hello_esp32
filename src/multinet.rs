@@ -1,22 +1,8 @@
-use std::ffi::CString;
-
+use crate::afe_config::print_afe_config;
 use esp_idf_svc::sys::esp_sr::{
     self, afe_config_free, afe_config_init, esp_afe_handle_from_config, esp_srmodel_filter,
 };
-
-macro_rules! call_c_method {
-        ($c_ptr: expr, $method: ident, $($args: expr),*) => {
-            unsafe {
-                if $c_ptr.is_null() {
-                    Err(anyhow::anyhow!("Null pointer provided to {}", stringify!($method)))
-                } else if let Some(inner_func) = (*$c_ptr).$method {
-                    Ok(inner_func($($args),*))
-                } else {
-                    Err(anyhow::anyhow!("Failed to call method {}", stringify!($method)))
-                }
-            }
-        };
-    }
+use std::ffi::CString;
 
 pub struct MultiNet {
     iface: *mut esp_sr::esp_afe_sr_iface_t,
@@ -79,8 +65,8 @@ impl MultiNet {
         let mn_name = unsafe {
             esp_srmodel_filter(
                 models,
-                prefix_str.as_ptr() as *const i8,
-                chinese_str.as_ptr() as *const i8,
+                prefix_str.as_ptr() as *const u8,
+                chinese_str.as_ptr() as *const u8,
             )
         };
 

@@ -1,8 +1,9 @@
 mod audio;
-mod multinet;
+mod utils;
+// mod multinet;
 mod ui;
 use crate::ui::display;
-use audio::{AFE, SAMPLE_RATE};
+use audio::{Afe, SAMPLE_RATE};
 use esp_idf_svc::{
     hal::{
         gpio::AnyIOPin,
@@ -15,7 +16,7 @@ use std::time::Duration;
 static WAV_DATA: &[u8] = include_bytes!("../assets/hello_16.wav");
 static PLAYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
-fn record(i2s: I2S0, ws: AnyIOPin, sck: AnyIOPin, din: AnyIOPin, mclk: Option<AnyIOPin>, afe: AFE) {
+fn record(i2s: I2S0, ws: AnyIOPin, sck: AnyIOPin, din: AnyIOPin, mclk: Option<AnyIOPin>, afe: Afe) {
     let i2s_config = config::StdConfig::new(
         config::Config::default().auto_clear(true),
         config::StdClkConfig::from_sample_rate_hz(SAMPLE_RATE),
@@ -56,7 +57,7 @@ fn play(
     dout: AnyIOPin,
     lrclk: AnyIOPin,
     mclk2: Option<AnyIOPin>,
-    afe: AFE,
+    afe: Afe,
 ) {
     let i2s_config = config::StdConfig::new(
         config::Config::default().auto_clear(true),
@@ -76,7 +77,7 @@ fn play(
 
     log_heap();
 
-    // play hello end
+    afe.set_wakenet_threashold();
     PLAYING.store(false, std::sync::atomic::Ordering::SeqCst);
 
     loop {
@@ -89,10 +90,13 @@ fn play(
         loop {
             match afe.fetch() {
                 Ok(v) => {
-                    let data = v.data;
+                    let mut data = v.data;
+                    let ints: &mut [i16] = bytemuck::cast_slice_mut(&mut data);
+                    afe.detect(ints);
+                    let _ = v.speech;
                     length += data.len();
                     buffer.extend_from_slice(&data);
-                    log::info!("Recording... total {length} bytes");
+                    // log::info!("Recording... total {length} bytes");
                     if length >= max_bytes {
                         log::info!("Recording time exceeded {max_bytes} bytes.");
                         break;
@@ -176,7 +180,7 @@ fn main() {
     log::info!("UI initialized");
     ui::greeting().unwrap();
 
-    let afe = AFE::new();
+    let afe = Afe::new();
     let afe_ = afe;
 
     std::thread::spawn(move || {
